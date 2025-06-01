@@ -43,7 +43,7 @@ export const logoutUser = async (
 
     const employee = await User.findById(userId);
     if (!employee) {
-      res.status(404).json({ message: "Employee not found" });
+      res.status(404).json({ message: "User not found" });
       return;
     }
 

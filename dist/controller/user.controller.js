@@ -12,13 +12,14 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.refreshAccessToken = exports.changePassword = exports.logoutUser = exports.loginUser = void 0;
-const jsonwebtoken_1 = __importDefault(require("jsonwebtoken"));
-const employee_model_1 = require("../models/employee.model");
+exports.verifyOtp = exports.sendOtp = exports.logoutUser = void 0;
+const user_model_1 = require("../models/user.model");
+const crypto_1 = __importDefault(require("crypto"));
+const nodemailer_1 = __importDefault(require("nodemailer"));
 // Utility: Generate Access and Refresh Tokens
 const generateAccessAndRefreshTokens = (userId) => __awaiter(void 0, void 0, void 0, function* () {
     try {
-        const employee = yield employee_model_1.Employee.findById(userId);
+        const employee = yield user_model_1.User.findById(userId);
         if (!employee) {
             throw new Error("Employee not found");
         }
@@ -34,51 +35,11 @@ const generateAccessAndRefreshTokens = (userId) => __awaiter(void 0, void 0, voi
     }
 });
 // Login Controller
-const loginUser = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
-    try {
-        const { email, password } = req.body;
-        console.log("Login request body:", req.body);
-        if (!email || !password) {
-            res.status(400).json({ message: "Email and password are required" });
-            return;
-        }
-        const employee = yield employee_model_1.Employee.findOne({ email });
-        if (!employee) {
-            res.status(401).json({ message: "Employee Does not exist" });
-            return;
-        }
-        const isPasswordValid = yield employee.isPasswordCorrect(password);
-        if (!isPasswordValid && employee.role !== "admin") {
-            res.status(401).json({ message: "Invalid password" });
-            return;
-        }
-        // console.log("Employee found:", employee);
-        const { accessToken, refreshToken } = yield generateAccessAndRefreshTokens(employee._id.toString());
-        const loggedInUser = yield employee_model_1.Employee.findById(employee._id).select("-password");
-        const options = {
-            httpOnly: true,
-            secure: process.env.NODE_ENV === "production",
-        };
-        res
-            .status(200)
-            .cookie("accessToken", accessToken, options)
-            .cookie("refreshToken", refreshToken, options)
-            .json({
-            data: { user: loggedInUser, accessToken, refreshToken },
-            message: "User logged in successfully",
-        });
-    }
-    catch (error) {
-        console.error("Login error:", error);
-        res.status(500).json({ message: "Internal server error" });
-    }
-});
-exports.loginUser = loginUser;
 // Logout Controller
 const logoutUser = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
     try {
-        const { userId } = req.body;
-        const employee = yield employee_model_1.Employee.findById(userId);
+        const userId = req.user._id;
+        const employee = yield user_model_1.User.findById(userId);
         if (!employee) {
             res.status(404).json({ message: "Employee not found" });
             return;
@@ -95,70 +56,98 @@ const logoutUser = (req, res) => __awaiter(void 0, void 0, void 0, function* () 
     }
 });
 exports.logoutUser = logoutUser;
-const changePassword = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
-    const { userId, oldPassword, newPassword } = req.body;
-    if (!userId || !oldPassword || !newPassword) {
-        res.status(400).json({ message: "User ID, old password, and new password are required" });
-        return;
-    }
+const sendOtp = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
     try {
-        const employee = yield employee_model_1.Employee.findById(userId);
-        if (!employee) {
-            res.status(404).json({ message: "Employee not found" });
+        const { email, password } = req.body;
+        if (!email) {
+            res.status(400).json({ message: "Email is required" });
             return;
         }
-        const isPasswordValid = yield employee.isPasswordCorrect(oldPassword);
+        ;
+        const user = yield user_model_1.User.findOne({ email });
+        if (!user) {
+            res.status(404).json({ message: "User not found" });
+            return;
+        }
+        const isPasswordValid = yield user.isPasswordCorrect(password);
         if (!isPasswordValid) {
-            res.status(401).json({ message: "Invalid old password" });
+            res.status(401).json({ message: "Invalid password" });
             return;
         }
-        employee.password = newPassword;
-        yield employee.save();
-        res.status(200).json({ message: "Password changed successfully" });
+        const otp = Math.floor(100000 + Math.random() * 900000).toString();
+        const hashedOtp = crypto_1.default.createHash("sha256").update(otp).digest("hex");
+        yield user_model_1.OtpModel.create({
+            email,
+            otp: hashedOtp,
+            otpExpiry: new Date(Date.now() + 10 * 60 * 1000), // OTP valid for 10 minutes
+        });
+        // Send OTP via email
+        const transporter = nodemailer_1.default.createTransport({
+            service: "gmail",
+            auth: {
+                user: process.env.SMTP_USER,
+                pass: process.env.SMTP_PASS,
+            },
+        });
+        yield transporter.sendMail({
+            from: process.env.SMTP_USER,
+            to: email,
+            subject: "Your OTP Code",
+            text: `Your OTP is ${otp}. It will expire in 10 minutes.`,
+        });
+        res.status(200).json({ message: "OTP sent to email" });
     }
     catch (error) {
-        console.error("Change password error:", error);
+        console.error("Send OTP error:", error);
         res.status(500).json({ message: "Internal server error" });
     }
 });
-exports.changePassword = changePassword;
-// Refresh Access Token Controller
-const refreshAccessToken = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
-    var _a, _b;
-    const incomingRefreshToken = ((_a = req.cookies) === null || _a === void 0 ? void 0 : _a.refreshToken) || ((_b = req.body) === null || _b === void 0 ? void 0 : _b.refreshToken);
-    if (!incomingRefreshToken) {
-        res.status(401).json({ message: "Refresh token not found" });
-        return;
-    }
+exports.sendOtp = sendOtp;
+const verifyOtp = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
     try {
-        const decoded = jsonwebtoken_1.default.verify(incomingRefreshToken, process.env.REFRESH_TOKEN_SECRET);
-        const employee = yield employee_model_1.Employee.findById(decoded === null || decoded === void 0 ? void 0 : decoded._id);
-        if (!employee || employee.refreshToken !== incomingRefreshToken) {
-            res.status(401).json({ message: "Invalid refresh token" });
+        const { email, otp } = req.body;
+        if (!email || !otp) {
+            res.status(400).json({ message: "Email and OTP are required" });
             return;
         }
-        const { accessToken, refreshToken } = yield generateAccessAndRefreshTokens(employee._id.toString());
+        const user = yield user_model_1.User.findOne({ email });
+        if (!user) {
+            res.status(400).json({ message: "Invalid request" });
+            return;
+        }
+        const otpRecord = yield user_model_1.OtpModel.findOne({ email });
+        if (!otpRecord || !otpRecord.otp || !otpRecord.otpExpiry) {
+            res.status(400).json({ message: "OTP not found" });
+            return;
+        }
+        const hashedOtp = crypto_1.default.createHash("sha256").update(otp).digest("hex");
+        if (otpRecord.otp !== hashedOtp) {
+            res.status(401).json({ message: "Invalid OTP" });
+            return;
+        }
+        if (otpRecord.otpExpiry < new Date()) {
+            res.status(401).json({ message: "OTP expired" });
+            return;
+        }
+        yield user_model_1.OtpModel.deleteOne({ email });
+        const { accessToken, refreshToken } = yield generateAccessAndRefreshTokens(user._id.toString());
+        const loggedInUser = yield user_model_1.User.findById(user._id).select("-password");
         const options = {
             httpOnly: true,
             secure: process.env.NODE_ENV === "production",
         };
-        const updatedUser = yield employee_model_1.Employee.findById(employee._id).select("-password");
         res
             .status(200)
             .cookie("accessToken", accessToken, options)
             .cookie("refreshToken", refreshToken, options)
             .json({
-            data: {
-                user: updatedUser,
-                accessToken,
-                refreshToken,
-            },
-            message: "Access token refreshed successfully",
+            data: { user: loggedInUser, accessToken, refreshToken },
+            message: "OTP verified. Logged in successfully",
         });
     }
     catch (error) {
-        console.error("Refresh token error:", error);
-        res.status(401).json({ message: "Invalid or expired refresh token" });
+        console.error("Verify OTP error:", error);
+        res.status(500).json({ message: "Internal server error" });
     }
 });
-exports.refreshAccessToken = refreshAccessToken;
+exports.verifyOtp = verifyOtp;

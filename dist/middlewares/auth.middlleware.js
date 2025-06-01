@@ -14,18 +14,17 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.verifyJWT = void 0;
 const jsonwebtoken_1 = __importDefault(require("jsonwebtoken"));
-const employee_model_1 = require("../models/employee.model");
+const user_model_1 = require("../models/user.model");
 const verifyJWT = (req, res, next) => __awaiter(void 0, void 0, void 0, function* () {
     var _a;
     try {
         const token = req.cookies.accessToken || ((_a = req.header("Authorization")) === null || _a === void 0 ? void 0 : _a.replace("Bearer ", ""));
-        console.log("Token from cookies or headers:", token);
         if (!token) {
             res.status(401).json({ message: "Unauthorized: Access token missing" });
             return;
         }
         const decoded = jsonwebtoken_1.default.verify(token, process.env.ACCESS_TOKEN_SECRET);
-        const user = yield employee_model_1.Employee.findById(decoded === null || decoded === void 0 ? void 0 : decoded._id).select("-password -refreshToken");
+        const user = yield user_model_1.User.findById(decoded === null || decoded === void 0 ? void 0 : decoded._id).select("-password -refreshToken");
         if (!user) {
             res.status(401).json({ message: "Unauthorized: User not found" });
             return;

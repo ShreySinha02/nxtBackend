@@ -41,7 +41,7 @@ const logoutUser = (req, res) => __awaiter(void 0, void 0, void 0, function* () 
         const userId = req.user._id;
         const employee = yield user_model_1.User.findById(userId);
         if (!employee) {
-            res.status(404).json({ message: "Employee not found" });
+            res.status(404).json({ message: "User not found" });
             return;
         }
         employee.refreshToken = "";

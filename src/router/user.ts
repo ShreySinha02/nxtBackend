@@ -15,7 +15,7 @@ router.route('/logout').post(verifyJWT,logoutUser)
 // router.route('/changePassword').post(verifyJWT,changePassword)
 router.route("/home").get(verifyJWT, async (req: Request, res: Response): Promise<void> => {
   try {
-    const userId = req.user?._id; // Assuming verifyJWT sets req.user
+    const userId = req.user?._id; 
 
     if (!userId) {
       res.status(400).json({ message: "User ID not found in token" });

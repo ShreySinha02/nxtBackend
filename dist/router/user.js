@@ -1,0 +1,21 @@
+"use strict";
+var __importDefault = (this && this.__importDefault) || function (mod) {
+    return (mod && mod.__esModule) ? mod : { "default": mod };
+};
+Object.defineProperty(exports, "__esModule", { value: true });
+const express_1 = __importDefault(require("express"));
+const user_controller_1 = require("../controller/user.controller");
+const auth_middlleware_1 = require("../middlewares/auth.middlleware");
+const attendance_controller_1 = require("../controller/attendance.controller");
+const router = express_1.default.Router();
+router.route('/login').post(user_controller_1.loginUser);
+router.route('/logout').post(auth_middlleware_1.verifyJWT, user_controller_1.logoutUser);
+router.route('/changePassword').post(auth_middlleware_1.verifyJWT, user_controller_1.changePassword);
+router.route('/startSession').post(auth_middlleware_1.verifyJWT, attendance_controller_1.startSession);
+router.route('/endSession').post(auth_middlleware_1.verifyJWT, attendance_controller_1.endSession);
+router.route('/currentSession').post(auth_middlleware_1.verifyJWT, attendance_controller_1.getSessionByEmployeeIdAndDate);
+router.route('/attendance/employee').post(auth_middlleware_1.verifyJWT, attendance_controller_1.getAttendanceByEmployeeId);
+router.route('/attendance/date').post(auth_middlleware_1.verifyJWT, attendance_controller_1.getAttendanceByEmployeeIdAndDate);
+router.route('/attendance/email/:email').get(auth_middlleware_1.verifyJWT, attendance_controller_1.getAttendanceByEmployeeEmail);
+// router.route('logout').post();
+exports.default = router;

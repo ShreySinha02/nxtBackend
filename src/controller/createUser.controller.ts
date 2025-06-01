@@ -1,0 +1,165 @@
+import { User,OtpModel } from "../models/user.model";
+import crypto from "crypto";
+import nodemailer from "nodemailer";
+
+
+
+export const sendSignupOtp = async (req: any, res: any) => {
+  try {
+    const { email } = req.body;
+    if (!email) return res.status(400).json({ message: "Email is required" });
+
+    const existingUser = await User.findOne({ email });
+    const existingOtp = await OtpModel.findOne({ email });
+    if(existingOtp) {
+      return res.status(400).json({ message: "User already exists" });
+    }
+    if (existingUser) {
+      return res.status(400).json({ message: "User already exists" });
+    }
+
+    const otp = Math.floor(100000 + Math.random() * 900000).toString();
+    const hashedOtp = crypto.createHash("sha256").update(otp).digest("hex");
+
+     await OtpModel.create({ email, otp: hashedOtp, otpExpiry: new Date(Date.now() + 10 * 60 * 1000) });
+
+   
+
+    const transporter = nodemailer.createTransport({
+      service: "gmail",
+      auth: {
+        user: process.env.SMTP_USER,
+        pass: process.env.SMTP_PASS,
+      },
+    });
+
+    await transporter.sendMail({
+      from: process.env.SMTP_USER,
+      to: email,
+      subject: "OTP for Signup",
+      text: `Your OTP is ${otp}. It is valid for 10 minutes.`,
+    });
+
+    res.status(200).json({ message: "OTP sent to email" });
+  } catch (error) {
+    console.error("Signup OTP error:", error);
+    res.status(500).json({ message: "Internal server error" });
+  }
+};
+
+export const verifySignupOtpAndCreateUser = async (req: any, res: any) => {
+  try {
+    console.log("Request body:", req.body);
+    const { name, email, password, companyName, age, dob, otp } = req.body;
+    const file = req.file;
+
+    if (!otp || !email || !name || !password || !companyName || !age || !dob) {
+      return res.status(400).json({ message: "All fields are required " });
+    }
+
+    // const user = await User.findOne({ email });
+    const otpRecord = await OtpModel.findOne({ email });
+    if (!otpRecord || !otpRecord.otp || !otpRecord.otpExpiry) {
+      return res.status(400).json({ message: "OTP not found" });
+    }
+   
+   
+
+    const hashedOtp = crypto.createHash("sha256").update(otp).digest("hex");
+
+    if (otpRecord.otp !== hashedOtp) {
+      return res.status(400).json({ message: "Invalid OTP" });
+    }
+
+    if (otpRecord.otpExpiry < new Date()) {
+      return res.status(400).json({ message: "OTP expired" });
+    }
+     
+    await OtpModel.deleteOne({ email });
+
+    if (!req.file) {
+      return res.status(400).json({ message: "Image is required" });
+    }
+
+    const allowedTypes = ["image/png", "image/jpeg", "image/jpg"];
+    if (!allowedTypes.includes(req.file.mimetype)) {
+      return res.status(400).json({ message: "Only PNG or JPG images allowed" });
+    }
+
+     const user = await User.create({
+    name,
+    email,
+    password,
+    companyName,
+    age,
+    dob,
+    image: file.filename,
+  });
+
+    // await user.save();
+
+    const safeUser = await User.findById(user._id).select("-password");
+
+    res.status(201).json({
+      message: "User created successfully",
+      user: safeUser,
+    });
+  } catch (error) {
+    console.error("User creation error:", error);
+    res.status(500).json({ message: "Internal server error" });
+  }
+};
+
+
+// const createUser = async (req: any, res: any) => {
+//   try {
+//     const { name, email, password, companyName, age, dob } = req.body;
+
+//     if (!req.file) {
+//       return res.status(400).json({ message: "Image is required" });
+//     }
+
+//     const allowedTypes = ["image/png", "image/jpeg", "image/jpg"];
+//     if (!allowedTypes.includes(req.file.mimetype)) {
+//       return res
+//         .status(400)
+//         .json({ message: "Only PNG or JPG images allowed" });
+//     }
+
+//     // Check if employee already exists
+//     const existingUser = await User.findOne({ email });
+//     if (existingUser) {
+//       return res.status(400).json({ message: "Employee already exists" });
+//     }
+
+//     const user = await User.create({
+//       name,
+//       email,
+//       password,
+//       companyName,
+//       age,
+//       dob,
+//       image: req.file.filename,
+//     });
+
+//     const createUser = await User.findById(user._id).select(
+//       "-password"
+//     );
+
+//     if (!createUser) {
+//       return res.status(404).json({ message: "Employee not found" });
+//     }
+//     return res
+//       .status(201)
+//       .json({
+//         message: "User created successfully",
+//         user: createUser,
+//       });
+//   } catch (error) {
+//     console.error("Error creating User:", error);
+//     return res.status(500).json({ message: "Internal server error" });
+//   }
+// };
+
+
+// export { verifySignupOtpAndCreateUser,sendSignupOtp };
